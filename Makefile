@@ -28,3 +28,6 @@ $(TARGET): $(OBJ)
 # Clean rule
 clean:
 	rm -f $(OBJ) $(TARGET)
+
+del:
+	rm -f database.db
