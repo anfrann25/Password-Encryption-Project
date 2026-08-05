@@ -20,23 +20,28 @@ class DatabaseTests(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_create_insert_load_roundtrip(self):
+        entry1 = Password.encrypt("hunter2", "000101")
+        entry2 = Password.encrypt("correct-horse", "010101")
+
         with database.open_database(self.db_path) as conn:
             database.create_table(conn)
-            database.insert_user(conn, key="000101", password="hunter2")
-            database.insert_user(conn, key="010101", password="correct-horse")
+            database.insert_user(conn, entry1.key, entry1.ciphertext)
+            database.insert_user(conn, entry2.key, entry2.ciphertext)
 
             loaded = database.load_users(conn)
 
         self.assertEqual(len(loaded), 2)
-        self.assertEqual(loaded[0], Password(key="000101", password="hunter2"))
-        self.assertEqual(
-            loaded[1], Password(key="010101", password="correct-horse")
-        )
+        self.assertEqual(loaded[0], entry1)
+        self.assertEqual(loaded[1], entry2)
+        # And they still decrypt correctly after a round trip through SQLite.
+        self.assertEqual(loaded[0].decrypt(), "hunter2")
+        self.assertEqual(loaded[1].decrypt(), "correct-horse")
 
     def test_remove_user_deletes_from_db_and_list(self):
+        entry = Password.encrypt("hunter2", "000101")
         with database.open_database(self.db_path) as conn:
             database.create_table(conn)
-            database.insert_user(conn, key="000101", password="hunter2")
+            database.insert_user(conn, entry.key, entry.ciphertext)
             entries = database.load_users(conn)
             self.assertEqual(len(entries), 1)
 
@@ -47,9 +52,10 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(remaining, [])
 
     def test_clear_table(self):
+        entry = Password.encrypt("hunter2", "000101")
         with database.open_database(self.db_path) as conn:
             database.create_table(conn)
-            database.insert_user(conn, key="000101", password="hunter2")
+            database.insert_user(conn, entry.key, entry.ciphertext)
             database.clear_table(conn)
             self.assertEqual(database.load_users(conn), [])
 
