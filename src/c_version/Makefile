@@ -2,16 +2,16 @@
 CXX = g++
 
 # Flags
-CXXFLAGS = -Wall -std=c++17 -I./src/Functions -I./src/PasswordClass
+CXXFLAGS = -Wall -std=c++17 -I ./Functions -I ./PasswordClass
 LDFLAGS = -lsqlite3
 
 
 
 # Sources
 SRC = \
-	src/Functions/functions.cpp \
-	src/PasswordClass/password.cpp \
-	src/main.cpp
+	./Functions/functions.cpp \
+	./PasswordClass/password.cpp \
+	main.cpp
 
 # Object files
 OBJ = $(SRC:.cpp=.o)
