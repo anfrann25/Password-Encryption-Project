@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ "Ρύθμιση" if is_setup else "Σύνδεση" }} — Password Manager{% endblock %}
+{% block content %}
+<div class="card">
+  {% if is_setup %}
+    <p>Δεν υπάρχει master password για αυτή τη βάση. Δημιούργησε έναν τώρα.</p>
+    <p class="hint">Δεν μπορεί να ανακτηθεί αν τον ξεχάσεις — θα χαθεί η πρόσβαση στα δεδομένα.</p>
+  {% else %}
+    <p>Δώσε τον master password σου για αυτή τη βάση.</p>
+  {% endif %}
+
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <form method="post">
+    <label for="password">Master Password</label>
+    <input type="password" id="password" name="password" autofocus required>
+
+    {% if is_setup %}
+    <label for="confirm">Επιβεβαίωση</label>
+    <input type="password" id="confirm" name="confirm" required>
+    {% endif %}
+
+    <button type="submit">{{ "Δημιουργία" if is_setup else "Σύνδεση" }}</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Οι κωδικοί μου — Password Manager{% endblock %}
+{% block header_actions %}
+<form class="logout-form" method="post" action="{{ url_for('logout') }}">
+  <button type="submit" class="secondary">Αποσύνδεση</button>
+</form>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+  <strong>Νέα εγγραφή</strong>
+  {% if problems %}
+    <div class="error">
+      Ελλιπές:
+      <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('entries_new') }}">
+    <label for="name">Όνομα (π.χ. "Gmail", "Τράπεζα")</label>
+    <input type="text" id="name" name="name" value="{{ form_name or '' }}" required>
+
+    <label for="password">Κωδικός</label>
+    <input type="password" id="password" name="password" required>
+    <div class="hint">Τουλάχιστον 8 χαρακτήρες, κεφαλαία, πεζά, αριθμό, ειδικό χαρακτήρα.</div>
+
+    <button type="submit">Αποθήκευση (κρυπτογραφημένη)</button>
+  </form>
+</div>
+
+<div class="card">
+  <strong>Αποθηκευμένες εγγραφές ({{ entries|length }})</strong>
+
+  {% if not entries %}
+    <div class="empty">Η βάση είναι άδεια.</div>
+  {% endif %}
+
+  {% for index, entry in entries %}
+  <div class="entry">
+    <div class="entry-name">{{ entry.name or "(χωρίς όνομα)" }}</div>
+    <div class="entry-meta">
+      Pattern: {{ entry.key }}<br>
+      Salt: {{ entry.salt }}<br>
+      Encrypted: {{ entry.ciphertext }}
+    </div>
+
+    {% if revealed_id == index %}
+      {% if revealed_plain is not none %}
+        <div class="entry-plain">Αποκρυπτογραφημένος: {{ revealed_plain }}</div>
+      {% else %}
+        <div class="error" style="margin-top:10px;">Αποτυχία αποκρυπτογράφησης.</div>
+      {% endif %}
+    {% endif %}
+
+    <div class="btn-row">
+      <form method="post" action="{{ url_for('entries_decrypt', index=index) }}">
+        <button type="submit" class="secondary">Αποκρυπτογράφηση</button>
+      </form>
+      <form method="post" action="{{ url_for('entries_delete', index=index) }}"
+            onsubmit="return confirm('Διαγραφή της εγγραφής &quot;{{ entry.name }}&quot;;');">
+        <button type="submit" class="danger">Διαγραφή</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
