@@ -105,6 +105,11 @@ def read_password() -> str:
     the first whitespace character, so passwords containing spaces are
     truncated in both versions).
 
+    .. note:: This function itself does not enforce any strength rules
+        -- see :func:`password_requirements` / :func:`is_strong_password`
+        for that, and :func:`.cli._read_strong_password` for the
+        interactive retry loop that uses them.
+
     Returns:
         The raw string typed by the user (up to the first whitespace).
     """
@@ -112,3 +117,49 @@ def read_password() -> str:
     # cin >> pass stops at the first whitespace character; replicate that
     # so behaviour matches the C++ version exactly.
     return raw.split()[0] if raw.split() else ""
+
+
+# --- Password strength rules -------------------------------------------
+#
+# A modern minimum bar for a password: long enough, and a mix of
+# character classes so it isn't just a dictionary word or a short
+# numeric PIN. This is deliberately simple (no dictionary/breach
+# checking, no entropy estimate) -- good enough to stop the obviously
+# weak passwords a project like this would otherwise happily accept.
+
+MIN_PASSWORD_LENGTH = 8
+SPECIAL_CHARACTERS = "!@#$%^&*()-_=+[]{}:;\"'<>,.?/\\|`~"
+
+
+def password_requirements(password: str) -> list[str]:
+    """Check `password` against modern strength rules.
+
+    Args:
+        password: The candidate password.
+
+    Returns:
+        A list of short, human-readable descriptions of every
+        requirement `password` currently fails to meet (in the order
+        checked). An empty list means the password meets every
+        requirement.
+    """
+    problems: list[str] = []
+    if len(password) < MIN_PASSWORD_LENGTH:
+        problems.append(f"at least {MIN_PASSWORD_LENGTH} characters")
+    if not any(c.isupper() for c in password):
+        problems.append("an uppercase letter (A-Z)")
+    if not any(c.islower() for c in password):
+        problems.append("a lowercase letter (a-z)")
+    if not any(c.isdigit() for c in password):
+        problems.append("a digit (0-9)")
+    if not any(c in SPECIAL_CHARACTERS for c in password):
+        problems.append("a special character (e.g. ! @ # $ % ^ & *)")
+    return problems
+
+
+def is_strong_password(password: str) -> bool:
+    """Return whether `password` meets every rule in
+    :func:`password_requirements` (i.e. that function returns an empty
+    list for it).
+    """
+    return not password_requirements(password)

@@ -11,6 +11,8 @@ from unittest.mock import patch
 from password_manager.functions import (
     decimal_to_binary,
     get_random_number,
+    is_strong_password,
+    password_requirements,
     read_number,
     read_password,
 )
@@ -70,6 +72,43 @@ class ReadPasswordTests(unittest.TestCase):
     def test_stops_at_whitespace(self, _mock_input):
         # Matches C++'s `cin >> pass`, which stops at the first whitespace.
         self.assertEqual(read_password(), "hunter2")
+
+
+class PasswordStrengthTests(unittest.TestCase):
+    def test_strong_password_has_no_problems(self):
+        self.assertEqual(password_requirements("Correct-Horse9!"), [])
+        self.assertTrue(is_strong_password("Correct-Horse9!"))
+
+    def test_too_short_flagged(self):
+        problems = password_requirements("Ab1!")
+        self.assertTrue(any("characters" in p for p in problems))
+        self.assertFalse(is_strong_password("Ab1!"))
+
+    def test_missing_uppercase_flagged(self):
+        problems = password_requirements("lowercase1!")
+        self.assertTrue(any("uppercase" in p for p in problems))
+
+    def test_missing_lowercase_flagged(self):
+        problems = password_requirements("UPPERCASE1!")
+        self.assertTrue(any("lowercase" in p for p in problems))
+
+    def test_missing_digit_flagged(self):
+        problems = password_requirements("NoDigitsHere!")
+        self.assertTrue(any("digit" in p for p in problems))
+
+    def test_missing_special_char_flagged(self):
+        problems = password_requirements("NoSymbols123")
+        self.assertTrue(any("special character" in p for p in problems))
+
+    def test_empty_password_flags_everything(self):
+        problems = password_requirements("")
+        self.assertEqual(len(problems), 5)
+        self.assertFalse(is_strong_password(""))
+
+    def test_only_length_and_case_missing_symbol_and_digit(self):
+        # Long enough, both cases present, but no digit and no symbol.
+        problems = password_requirements("OnlyLettersHere")
+        self.assertEqual(len(problems), 2)
 
 
 if __name__ == "__main__":
