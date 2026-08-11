@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Εισαγωγή εγγραφών — Password Manager{% endblock %}
+{% block header_actions %}
+<a href="{{ url_for('entries_view') }}" class="secondary-link">← Πίσω στις εγγραφές</a>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+  <strong>Εισαγωγή από αρχείο εξαγωγής</strong>
+  <div class="hint" style="margin-top:6px;">
+    Διάλεξε ένα <code>.json</code> αρχείο που κατέβασες με "Εξαγωγή". Οι εγγραφές
+    προστίθενται στην τρέχουσα βάση χωρίς να αποκρυπτογραφηθούν -- αν προέρχονται από
+    διαφορετικό master password, θα φανούν στη λίστα αλλά η "Αποκρυπτογράφηση" θα
+    αποτυγχάνει γι' αυτές μέχρι να συνδεθείς με τον σωστό.
+  </div>
+
+  {% if result %}
+    <div class="entry-plain" style="margin-top:16px;">
+      Εισήχθησαν {{ result.imported }} εγγραφές{% if result.skipped %}, παραλείφθηκαν {{ result.skipped }}{% endif %}.
+      {% if result.master_restored %}<br>Τα master settings ενημερώθηκαν από το αρχείο -- συνδέσου ξανά με το master password της αρχικής βάσης.{% endif %}
+    </div>
+  {% endif %}
+
+  {% if errors %}
+    <div class="error" style="margin-top:16px;">
+      <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('import_entries') }}" enctype="multipart/form-data">
+    <label for="file">Αρχείο JSON</label>
+    <input type="file" id="file" name="file" accept="application/json,.json" required>
+
+    <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+      <input type="checkbox" name="restore_master" style="width:auto;"
+             onchange="document.getElementById('restore-warning').style.display = this.checked ? 'block' : 'none';">
+      <span style="color:var(--text); font-size:13px;">Χρήση master settings του αρχείου (για πλήρη μεταφορά σε νέα/άδεια βάση)</span>
+    </label>
+    <div id="restore-warning" class="error" style="display:none; margin-top:10px;">
+      Αν αυτή η βάση έχει ήδη εγγραφές, θα σταματήσουν να αποκρυπτογραφούνται μετά από αυτό
+      (αλλάζει το πώς παράγεται το master key). Χρησιμοποίησέ το μόνο σε ολοκληρωτικά καινούρια βάση,
+      και μετά συνδέσου ξανά με το master password της αρχικής βάσης.
+    </div>
+
+    <button type="submit" onclick="return !document.querySelector('input[name=restore_master]').checked || confirm('Σίγουρα; Αυτό θα αλλάξει τα master settings αυτής της βάσης.');">Εισαγωγή</button>
+  </form>
+</div>
+
+{% endblock %}

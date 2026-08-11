@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Οι κωδικοί μου — Password Manager{% endblock %}
 {% block header_actions %}
-<form class="logout-form" method="post" action="{{ url_for('logout') }}">
-  <button type="submit" class="secondary">Αποσύνδεση</button>
-</form>
+<div style="display:flex; align-items:center; gap:14px;">
+  <a href="{{ url_for('export_entries') }}" class="secondary-link">⭳ Εξαγωγή</a>
+  <a href="{{ url_for('import_view') }}" class="secondary-link">⭱ Εισαγωγή</a>
+  <form class="logout-form" method="post" action="{{ url_for('logout') }}">
+    <button type="submit" class="secondary">Αποσύνδεση</button>
+  </form>
+</div>
 {% endblock %}
 {% block content %}
 

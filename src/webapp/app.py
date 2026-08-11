@@ -21,11 +21,13 @@ Local web UI for the Password Manager.
 
 from __future__ import annotations
 
+import json
 import secrets
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, Response, redirect, render_template, request, session, url_for
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -86,6 +88,55 @@ def _generate_pattern() -> str:
         random_value -= number
     pattern = decimal_to_binary(random_value)
     return pattern
+
+
+_HEX_DIGITS = set("0123456789abcdefABCDEF")
+
+
+def _validate_import_row(raw: object) -> str | None:
+    """Sanity-check one entry from an imported JSON file.
+
+    Δεν προσπαθεί να κάνει decrypt -- αυτό θα απαιτούσε τον master key
+    που δημιούργησε το export, που μπορεί κάλλιστα να είναι διαφορετικός
+    από τον τρέχοντα (π.χ. import σε άλλη μηχανή/βάση). Ελέγχει μόνο ότι
+    το σχήμα είναι αυτό που περιμένουμε, ώστε ένα κακοφτιαγμένο αρχείο
+    να μην καταλήξει σε άχρηστες γραμμές στη βάση.
+
+    Returns:
+        ``None`` αν η γραμμή είναι έγκυρη, αλλιώς ένα σύντομο μήνυμα
+        για το πρόβλημα.
+    """
+    if not isinstance(raw, dict):
+        return "δεν είναι JSON object"
+    for field in ("pattern", "salt", "ciphertext"):
+        value = raw.get(field)
+        if not isinstance(value, str) or not value:
+            return f"λείπει ή είναι κενό το πεδίο '{field}'"
+    if any(bit not in "01" for bit in raw["pattern"]):
+        return "το 'pattern' πρέπει να είναι binary string (μόνο 0/1)"
+    if any(c not in _HEX_DIGITS for c in raw["salt"]):
+        return "το 'salt' πρέπει να είναι hex"
+    if any(c not in _HEX_DIGITS and c != "!" for c in raw["ciphertext"]):
+        return "το 'ciphertext' πρέπει να είναι hex (με προαιρετικό '!')"
+    if not isinstance(raw.get("name", ""), str):
+        return "το 'name' πρέπει να είναι string"
+    return None
+
+
+def _validate_master_block(raw: object) -> str | None:
+    """Sanity-check the optional ``"master"`` block of an import file."""
+    if not isinstance(raw, dict):
+        return "το πεδίο 'master' δεν είναι JSON object"
+    salt = raw.get("salt")
+    verifier = raw.get("verifier")
+    iterations = raw.get("iterations")
+    if not isinstance(salt, str) or any(c not in _HEX_DIGITS for c in salt):
+        return "το 'master.salt' πρέπει να είναι hex string"
+    if not isinstance(verifier, str) or any(c not in _HEX_DIGITS for c in verifier):
+        return "το 'master.verifier' πρέπει να είναι hex string"
+    if not isinstance(iterations, int) or iterations <= 0:
+        return "το 'master.iterations' πρέπει να είναι θετικός ακέραιος"
+    return None
 
 
 @app.route("/", methods=["GET"])
@@ -383,6 +434,161 @@ def entries_delete(index: int):
         conn.close()
 
     return redirect(url_for("entries_view"))
+
+
+@app.route("/export", methods=["GET"])
+def export_entries():
+    """Κατεβάζει όλες τις εγγραφές σαν JSON: μόνο name/pattern/salt/ciphertext.
+
+    ΠΟΤΕ το plaintext, ΠΟΤΕ ο master key. Χωρίς τον ίδιο master password
+    που δημιούργησε τις εγγραφές, το αρχείο είναι άχρηστο για
+    αποκρυπτογράφηση (βλ. ``Password.decrypt``) -- είναι ήδη
+    κρυπτογραφημένο περιεχόμενο, οπότε είναι ασφαλές να μετακινείται
+    (backup, άλλη μηχανή, cloud storage, κ.λπ.) χωρίς πρόσθετη προστασία.
+
+    Περιλαμβάνει επίσης τα master-password verification settings (salt,
+    iterations, verifier -- ΟΧΙ τον ίδιο τον master password) ώστε, αν
+    χρειαστεί, το import σε μια ολοκαίνουρια βάση να μπορεί προαιρετικά
+    να τα αντιγράψει και το ίδιο typed master password να παράγει το
+    ίδιο derived key εκεί -- βλ. :func:`import_entries`.
+    """
+    redirect_resp = require_login()
+    if redirect_resp:
+        return redirect_resp
+
+    conn = get_connection()
+    try:
+        entries = database.load_users(conn)
+        settings = database.get_master_settings(conn)
+    finally:
+        conn.close()
+
+    payload = {
+        "version": 1,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "entries": [
+            {
+                "name": entry.name,
+                "pattern": entry.key,
+                "salt": entry.salt,
+                "ciphertext": entry.ciphertext,
+            }
+            for entry in entries
+        ],
+    }
+    if settings is not None:
+        salt_hex, iterations, verifier_hex = settings
+        payload["master"] = {
+            "salt": salt_hex,
+            "iterations": iterations,
+            "verifier": verifier_hex,
+        }
+    body = json.dumps(payload, ensure_ascii=False, indent=2)
+    filename = f"password-manager-export-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    return Response(
+        body,
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/import", methods=["GET"])
+def import_view():
+    redirect_resp = require_login()
+    if redirect_resp:
+        return redirect_resp
+    return render_template("import.html", db_path=DB_PATH, result=None, errors=None)
+
+
+@app.route("/import", methods=["POST"])
+def import_entries():
+    """Διαβάζει ένα JSON αρχείο (ίδιας μορφής με το /export) και εισάγει
+    τις εγγραφές στην τρέχουσα βάση. Δεν κάνει decrypt τίποτα εδώ --
+    απλά αντιγράφει τις ήδη-κρυπτογραφημένες γραμμές.
+
+    Αν προέρχονται από βάση με διαφορετικό (ή απλά διαφορετικά
+    παραγμένο) master salt, η "Αποκρυπτογράφηση" θα αποτυγχάνει γι'
+    αυτές -- ακόμα κι αν ο χρήστης πληκτρολογήσει το "ίδιο" master
+    password, γιατί κάθε βάση παράγει δικό της τυχαίο salt στο πρώτο
+    setup, οπότε ίδιο password + διαφορετικό salt = διαφορετικό
+    derived key. Το προαιρετικό checkbox "restore_master" αντιμετωπίζει
+    ακριβώς αυτό: αντιγράφει το salt/iterations/verifier του exported
+    αρχείου στην τρέχουσα βάση, ώστε το ίδιο typed master password να
+    παράγει το ίδιο derived key εδώ. Αυτό ΑΚΥΡΩΝΕΙ οποιεσδήποτε
+    εγγραφές υπήρχαν ήδη σε αυτή τη βάση πριν το restore (κρυπτογραφημένες
+    με το παλιό salt) -- γι' αυτό γίνεται μόνο αν ζητηθεί ρητά, και
+    αναγκάζει νέο login αμέσως μετά.
+    """
+    redirect_resp = require_login()
+    if redirect_resp:
+        return redirect_resp
+
+    uploaded = request.files.get("file")
+    restore_master = request.form.get("restore_master") == "on"
+    errors: list[str] = []
+
+    if uploaded is None or uploaded.filename == "":
+        errors.append("Διάλεξε ένα αρχείο .json για εισαγωγή.")
+        return render_template("import.html", db_path=DB_PATH, result=None, errors=errors)
+
+    try:
+        payload = json.loads(uploaded.read().decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        errors.append(f"Το αρχείο δεν είναι έγκυρο JSON: {exc}")
+        return render_template("import.html", db_path=DB_PATH, result=None, errors=errors)
+
+    raw_entries = payload.get("entries") if isinstance(payload, dict) else None
+    if not isinstance(raw_entries, list):
+        errors.append("Το JSON δεν έχει τη λίστα 'entries' που περιμέναμε.")
+        return render_template("import.html", db_path=DB_PATH, result=None, errors=errors)
+
+    master_restored = False
+    if restore_master:
+        master_block = payload.get("master") if isinstance(payload, dict) else None
+        problem = _validate_master_block(master_block)
+        if problem:
+            errors.append(f"Δεν έγινε restore των master settings: {problem}")
+        else:
+            conn = get_connection()
+            try:
+                database.create_settings_table(conn)
+                database.overwrite_master_settings(
+                    conn, master_block["salt"], master_block["iterations"], master_block["verifier"]
+                )
+            finally:
+                conn.close()
+            master_restored = True
+            # Ο master_key που έχουμε στη μνήμη προέρχεται από το ΠΑΛΙΟ
+            # salt -- δεν είναι πια σωστός. Αποσύνδεση, ώστε το επόμενο
+            # login να τον ξαναϋπολογίσει με το νέο salt.
+            sid = session.pop("sid", None)
+            if sid:
+                SESSIONS.pop(sid, None)
+
+    imported = 0
+    skipped = 0
+    conn = get_connection()
+    try:
+        database.create_table(conn)
+        for i, raw in enumerate(raw_entries):
+            problem = _validate_import_row(raw)
+            if problem:
+                skipped += 1
+                errors.append(f"Εγγραφή #{i + 1} παραλείφθηκε: {problem}")
+                continue
+            database.insert_user(
+                conn, raw.get("name", ""), raw["pattern"], raw["salt"], raw["ciphertext"]
+            )
+            imported += 1
+    finally:
+        conn.close()
+
+    return render_template(
+        "import.html",
+        db_path=DB_PATH,
+        result={"imported": imported, "skipped": skipped, "master_restored": master_restored},
+        errors=errors or None,
+    )
 
 
 if __name__ == "__main__":

@@ -146,6 +146,37 @@ def save_master_settings(
         print(f"Failed to save settings: {exc}")
 
 
+def overwrite_master_settings(
+    connection: sqlite3.Connection,
+    master_salt_hex: str,
+    iterations: int,
+    verifier_hex: str,
+) -> None:
+    """Replace whatever master-password settings this DB currently has.
+
+    Unlike :func:`save_master_settings` (insert-only, for first-time
+    setup), this REPLACEs row ``ID = 1``. Used when importing an export
+    that includes its source database's master salt/verifier, so a
+    fresh destination database derives the *same* master key from the
+    *same* typed master password -- otherwise each database's own
+    randomly-generated salt would make an identical password derive an
+    unrelated key, and none of the imported entries would decrypt.
+
+    .. warning:: Any entries already in this database were encrypted
+        under the *old* salt's derived key. After this call they will
+        no longer decrypt -- only call this on an empty/fresh database.
+    """
+    try:
+        connection.execute(
+            "INSERT OR REPLACE INTO Settings (ID, MasterSalt, Iterations, Verifier) "
+            "VALUES (1, ?, ?, ?);",
+            (master_salt_hex, iterations, verifier_hex),
+        )
+        connection.commit()
+    except sqlite3.Error as exc:
+        print(f"Failed to overwrite settings: {exc}")
+
+
 def insert_user(
     connection: sqlite3.Connection,
     name: str,
