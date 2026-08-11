@@ -267,6 +267,7 @@ def generate_preview():
     name = request.form.get("name", "").strip()
     replace_index = request.form.get("replace_index", "")
     use_separator = request.form.get("separator") == "on"
+    use_uppercase = request.form.get("uppercase") == "on"
     alnum_only = request.form.get("alnum_only") == "on"
     if alnum_only:
         use_separator = False
@@ -282,7 +283,11 @@ def generate_preview():
     candidates = None
     if not problems:
         candidates = generator.generate_candidates(
-            seed, count=3, length=length, use_separator=use_separator
+            seed,
+            count=3,
+            length=length,
+            use_separator=use_separator,
+            use_uppercase=use_uppercase,
         )
 
     return render_template(
@@ -294,6 +299,7 @@ def generate_preview():
         form_seed=seed,
         form_length=length,
         form_separator=use_separator,
+        form_uppercase=use_uppercase,
         form_alnum_only=alnum_only,
         candidates=candidates,
         problems=problems or None,

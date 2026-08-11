@@ -43,6 +43,11 @@
     <div class="hint">Μεγαλύτερο seed δίνει περισσότερους διαθέσιμους χαρακτήρες.</div>
 
     <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+      <input type="checkbox" name="uppercase" style="width:auto;"
+             {{ "checked" if form_uppercase is not defined or form_uppercase else "" }}>
+      <span style="color:var(--text); font-size:13px;">Κεφαλαία γράμματα (μείξη A-F / a-f)</span>
+    </label>
+    <label style="display:flex; align-items:center; gap:8px; margin-top:8px;">
       <input type="checkbox" name="separator" style="width:auto;"
              {{ "checked" if form_separator is not defined or form_separator else "" }}
              {{ "disabled" if form_alnum_only else "" }}>
@@ -54,6 +59,7 @@
              onchange="document.querySelector('input[name=separator]').disabled = this.checked;">
       <span style="color:var(--text); font-size:13px;">Μόνο αλφαριθμητικά (κάποια sites δεν δέχονται ειδικούς χαρακτήρες)</span>
     </label>
+    <div class="hint" style="margin-top:4px;">Τα κεφαλαία δεν επηρεάζονται από το "μόνο αλφαριθμητικά" -- είναι ήδη γράμματα/αριθμοί.</div>
 
     <button type="submit">{{ "Νέες προτάσεις" if candidates else "Δημιουργία προτάσεων" }}</button>
   </form>
