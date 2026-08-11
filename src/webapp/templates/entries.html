@@ -8,7 +8,11 @@
 {% block content %}
 
 <div class="card">
-  <strong>Νέα εγγραφή</strong>
+  <div style="display:flex; align-items:baseline; justify-content:space-between;">
+    <strong>Νέα εγγραφή</strong>
+    <a href="{{ url_for('generate_view') }}" class="secondary-link">✨ Δημιουργία κωδικού από seed</a>
+  </div>
+  <div class="hint" style="margin-top:6px;">Έχεις ήδη έναν κωδικό; Βάλ' τον εδώ. Θες τον generator να σου προτείνει έναν; Πάτα το link πάνω δεξιά.</div>
   {% if problems %}
     <div class="error">
       Ελλιπές:
@@ -16,7 +20,7 @@
     </div>
   {% endif %}
   <form method="post" action="{{ url_for('entries_new') }}">
-    <label for="name">Όνομα (π.χ. "Gmail", "Τράπεζα")</label>
+    <label for="name">Όνομα / για ποιο site είναι (π.χ. "Gmail", "Τράπεζα")</label>
     <input type="text" id="name" name="name" value="{{ form_name or '' }}" required>
 
     <label for="password">Κωδικός</label>
@@ -55,6 +59,7 @@
       <form method="post" action="{{ url_for('entries_decrypt', index=index) }}">
         <button type="submit" class="secondary">Αποκρυπτογράφηση</button>
       </form>
+      <a href="{{ url_for('generate_view', replace_index=index, name=entry.name) }}" class="secondary-link btn-like">Αναδημιουργία</a>
       <form method="post" action="{{ url_for('entries_delete', index=index) }}"
             onsubmit="return confirm('Διαγραφή της εγγραφής &quot;{{ entry.name }}&quot;;');">
         <button type="submit" class="danger">Διαγραφή</button>

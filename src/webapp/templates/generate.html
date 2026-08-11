@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Δημιουργία κωδικού — Password Manager{% endblock %}
+{% block header_actions %}
+<a href="{{ url_for('entries_view') }}" class="secondary-link">← Πίσω στις εγγραφές</a>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+  <strong>Δημιουργία κωδικού από seed</strong>
+  <div class="hint" style="margin-top:6px;">
+    Δώσε κάτι εύκολο να θυμάσαι (π.χ. <code>andreas123</code>). Δεν αποθηκεύεται ποτέ
+    όπως-είναι και δεν χρειάζεται να είναι "ισχυρό" -- τρέχει μέσα από το ίδιο
+    crypto pipeline και σου προτείνει 3 τυχαία-φαινομενικά strings. Διαλέγεις ένα,
+    και αυτό (όχι το seed) αποθηκεύεται κρυπτογραφημένο στο vault.
+  </div>
+
+  {% if problems %}
+    <div class="error">
+      Ελλιπές:
+      <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('generate_preview') }}">
+    {% if replace_index %}
+      <input type="hidden" name="replace_index" value="{{ replace_index }}">
+      <div class="hint">Θα αντικαταστήσει την υπάρχουσα εγγραφή "{{ form_name }}".</div>
+    {% endif %}
+
+    <label for="name">Για ποιο site/χρήση είναι (π.χ. "Gmail")</label>
+    <input type="text" id="name" name="name" value="{{ form_name or '' }}" required>
+
+    <label for="seed">Seed (εύκολο να θυμάσαι -- δεν αποθηκεύεται)</label>
+    <input type="text" id="seed" name="seed" value="{{ form_seed or '' }}" required autocomplete="off">
+
+    <label for="length">Μήκος τελικού string</label>
+    <select id="length" name="length">
+      <option value="" {{ "selected" if not form_length else "" }}>Χωρίς όριο</option>
+      {% for choice in length_choices %}
+        <option value="{{ choice }}" {{ "selected" if form_length == choice else "" }}>{{ choice }} χαρακτήρες</option>
+      {% endfor %}
+    </select>
+    <div class="hint">Μεγαλύτερο seed δίνει περισσότερους διαθέσιμους χαρακτήρες.</div>
+
+    <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+      <input type="checkbox" name="separator" style="width:auto;"
+             {{ "checked" if form_separator is not defined or form_separator else "" }}
+             {{ "disabled" if form_alnum_only else "" }}>
+      <span style="color:var(--text); font-size:13px;">Διαχωριστικό "!" στη μέση</span>
+    </label>
+    <label style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+      <input type="checkbox" name="alnum_only" style="width:auto;" id="alnum_only"
+             {{ "checked" if form_alnum_only else "" }}
+             onchange="document.querySelector('input[name=separator]').disabled = this.checked;">
+      <span style="color:var(--text); font-size:13px;">Μόνο αλφαριθμητικά (κάποια sites δεν δέχονται ειδικούς χαρακτήρες)</span>
+    </label>
+
+    <button type="submit">{{ "Νέες προτάσεις" if candidates else "Δημιουργία προτάσεων" }}</button>
+  </form>
+</div>
+
+{% if candidates %}
+<div class="card">
+  <strong>Διάλεξε ένα από τα 3</strong>
+  <div class="hint" style="margin-top:6px;">Κάθε φορά που πατάς "Νέες προτάσεις" παίρνεις τελείως διαφορετικά strings, ακόμα κι αν το seed είναι ίδιο.</div>
+
+  <form method="post" action="{{ url_for('generate_save') }}">
+    <input type="hidden" name="name" value="{{ form_name }}">
+    {% if replace_index %}<input type="hidden" name="replace_index" value="{{ replace_index }}">{% endif %}
+
+    {% for candidate in candidates %}
+    <label class="candidate-option">
+      <input type="radio" name="chosen" value="{{ candidate.text }}" {{ "checked" if loop.first else "" }} required>
+      <span class="candidate-text">{{ candidate.text }}</span>
+      <button type="button" class="secondary copy-btn" onclick="navigator.clipboard.writeText('{{ candidate.text }}')">Αντιγραφή</button>
+    </label>
+    {% endfor %}
+
+    <button type="submit">{{ "Αντικατάσταση εγγραφής" if replace_index else "Αποθήκευση επιλεγμένου" }}</button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}

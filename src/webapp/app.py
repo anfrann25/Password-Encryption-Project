@@ -29,13 +29,15 @@ from flask import Flask, redirect, render_template, request, session, url_for
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from password_manager import database, master  # noqa: E402
+from password_manager import database, generator, master  # noqa: E402
 from password_manager.functions import (  # noqa: E402
     decimal_to_binary,
     get_random_number,
     password_requirements,
 )
 from password_manager.models import Password  # noqa: E402
+
+GENERATE_LENGTH_CHOICES = [12, 16, 20, 24, 32]
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)  # νέο κάθε φορά που ξεκινά ο server
@@ -214,6 +216,119 @@ def entries_new():
 
     conn = get_connection()
     try:
+        database.insert_user(conn, entry.name, entry.key, entry.salt, entry.ciphertext)
+    finally:
+        conn.close()
+
+    return redirect(url_for("entries_view"))
+
+
+@app.route("/generate", methods=["GET"])
+def generate_view():
+    """"Δημιουργία κωδικού": ξεχωριστό mode από τη χειροκίνητη φόρμα.
+
+    Ο χρήστης δίνει ένα εύκολο-να-θυμάται seed (χωρίς κανέναν έλεγχο
+    δύναμης -- δεν αποθηκεύεται ποτέ όπως-είναι) και βλέπει 3
+    προτεινόμενα, φαινομενικά-τυχαία strings παραγμένα από αυτό. Αν
+    ήρθε εδώ πατώντας "Αναδημιουργία" σε υπάρχουσα εγγραφή, το ?replace_index
+    προεπιλέγει το όνομα και κάνει το "Αποθήκευση" να αντικαταστήσει
+    εκείνη την εγγραφή αντί να προσθέσει καινούρια.
+    """
+    redirect_resp = require_login()
+    if redirect_resp:
+        return redirect_resp
+
+    replace_index = request.args.get("replace_index", "")
+    prefill_name = request.args.get("name", "")
+    return render_template(
+        "generate.html",
+        db_path=DB_PATH,
+        length_choices=GENERATE_LENGTH_CHOICES,
+        replace_index=replace_index,
+        form_name=prefill_name,
+        candidates=None,
+    )
+
+
+@app.route("/generate/preview", methods=["POST"])
+def generate_preview():
+    """Στάδιο 1: παράγει 3 variants από το seed για να διαλέξει ο χρήστης.
+
+    Ούτε το seed ούτε τα variants αποθηκεύονται εδώ -- μόνο εμφανίζονται.
+    Το seed περνάει ξανά σαν hidden field στη φόρμα ώστε το κουμπί
+    "Νέες προτάσεις" να μπορεί να ζητήσει ένα ακόμα σετ χωρίς να το
+    ξαναπληκτρολογήσει ο χρήστης· δεν αποθηκεύεται στο session ή στη βάση.
+    """
+    redirect_resp = require_login()
+    if redirect_resp:
+        return redirect_resp
+
+    seed = request.form.get("seed", "")
+    name = request.form.get("name", "").strip()
+    replace_index = request.form.get("replace_index", "")
+    use_separator = request.form.get("separator") == "on"
+    alnum_only = request.form.get("alnum_only") == "on"
+    if alnum_only:
+        use_separator = False
+    length_raw = request.form.get("length", "")
+    length = int(length_raw) if length_raw.isdigit() else None
+
+    problems: list[str] = []
+    if not seed:
+        problems.append("δώσε ένα seed (δεν χρειάζεται να είναι \"ισχυρό\")")
+    if not name:
+        problems.append("ένα όνομα/χρήση (π.χ. \"Gmail\")")
+
+    candidates = None
+    if not problems:
+        candidates = generator.generate_candidates(
+            seed, count=3, length=length, use_separator=use_separator
+        )
+
+    return render_template(
+        "generate.html",
+        db_path=DB_PATH,
+        length_choices=GENERATE_LENGTH_CHOICES,
+        replace_index=replace_index,
+        form_name=name,
+        form_seed=seed,
+        form_length=length,
+        form_separator=use_separator,
+        form_alnum_only=alnum_only,
+        candidates=candidates,
+        problems=problems or None,
+    )
+
+
+@app.route("/generate/save", methods=["POST"])
+def generate_save():
+    """Στάδιο 2: ο χρήστης διάλεξε ένα variant -- αποθηκεύεται στο vault
+    ακριβώς όπως μια χειροκίνητη εγγραφή (``Password.encrypt``), μόνο
+    που το plaintext είναι το generated string αντί για ό,τι θα έγραφε
+    ο χρήστης στο πεδίο "Κωδικός" της φόρμας "Νέα εγγραφή".
+    """
+    redirect_resp = require_login()
+    if redirect_resp:
+        return redirect_resp
+    master_key = current_master_key()
+
+    chosen = request.form.get("chosen", "")
+    name = request.form.get("name", "").strip()
+    replace_index = request.form.get("replace_index", "")
+
+    if not chosen or not name:
+        return redirect(url_for("generate_view"))
+
+    pattern = _generate_pattern()
+    entry = Password.encrypt(chosen, pattern, master_key, name)
+
+    conn = get_connection()
+    try:
+        if replace_index.isdigit():
+            entries = database.load_users(conn)
+            idx = int(replace_index)
+            if 0 <= idx < len(entries):
+                database.remove_user(conn, entries, entries[idx])
         database.insert_user(conn, entry.name, entry.key, entry.salt, entry.ciphertext)
     finally:
         conn.close()
